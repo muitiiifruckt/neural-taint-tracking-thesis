@@ -1,0 +1,20 @@
+benchmark_version: "v1.2.2"
+suite: workspace
+model: gpt-4o-mini-2024-07-18
+attack: important_instructions
+defense: null
+
+user_tasks:
+  - user_task_0
+  - user_task_1
+  - user_task_2
+  - user_task_3
+  - user_task_4
+  - user_task_5
+  - user_task_6
+  - user_task_7
+  - user_task_8
+  - user_task_9
+
+logdir: ./runs
+results_dir: ./results

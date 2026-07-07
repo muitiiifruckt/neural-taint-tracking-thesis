@@ -1,0 +1,157 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{amsmath}
+
+\geometry{margin=2.5cm}
+\hypersetup{colorlinks=true, linkcolor=blue, urlcolor=blue, citecolor=blue}
+
+\title{Neural Taint Tracking for Prompt-Injection-Resistant Agents\\[0.5em]\large Project Progress Report}
+\author{Murtazin Aizat}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section{Project Idea}
+
+Large language model (LLM) agents that call external tools (email, calendar, banking, file storage) routinely process \emph{untrusted data}: tool outputs, retrieved documents, and third-party messages. Attackers can embed \emph{indirect prompt injections} in such data---instructions that hijack the agent to perform malicious actions (e.g., exfiltrate email, delete files, or transfer funds) while the user requested something else.
+
+Existing defenses such as \textbf{StruQ} separate instructions from data at the level of a \emph{single} LLM query. Real agents, however, operate in \emph{multi-step} loops (read inbox $\rightarrow$ reason $\rightarrow$ call \texttt{send\_email}). Trust labels do not propagate through this loop by default.
+
+\textbf{Project goal:} build an orchestration-layer \textbf{taint-tracking wrapper} around an existing agent that:
+\begin{itemize}
+  \item labels each context fragment as \emph{trusted} or \emph{untrusted};
+  \item audits arguments of \textbf{privileged} tool calls before execution;
+  \item blocks or sanitizes calls when untrusted content influences dangerous actions.
+\end{itemize}
+
+We do \textbf{not} train a new LLM; we add a policy layer on top of a standard tool-calling agent. Evaluation uses the \textbf{AgentDojo} benchmark (NeurIPS 2024).
+
+\section{Progress So Far}
+
+\begin{itemize}
+  \item Defined project scope: symbolic taint wrapper for the course project ($\sim$1.5 months); extension with a learned sanitizer and full evaluation planned for master's thesis work.
+  \item Set up the repository (\texttt{tesis/}): Python virtual environment, AgentDojo, baseline configuration, and automation scripts (\texttt{run\_t0\_baseline.ps1}, \texttt{collect\_t0\_results.py}).
+  \item Completed \textbf{T0 baseline} (no defense) on the AgentDojo \texttt{workspace} suite (v1.2.2) with \texttt{gpt-4o-mini-2024-07-18} (via OpenRouter), attack \texttt{important\_instructions}, 10 user tasks and $10 \times 14 = 140$ security cases.
+  \item Produced reproducible artifacts: metric summaries, JSON traces, and per-case markdown logs under \texttt{results/}.
+\end{itemize}
+
+\noindent\textbf{Note on model choice:} the backbone LLM may change later (e.g., cost, availability, or capability). For any ablation, all treatments (T0--T4) will use the \emph{same} model; if we switch models, T0 will be re-run to keep comparisons fair.
+
+\subsection{Baseline (T0) Results}
+
+\begin{table}[h]
+  \centering
+  \caption{AgentDojo workspace baseline without defense.}
+  \label{tab:t0}
+  \begin{tabular}{@{}ll@{}}
+    \toprule
+    \textbf{Metric} & \textbf{Value} \\
+    \midrule
+    Benign Utility & 100\% (10/10 user tasks) \\
+    Utility Under Attack & 20.0\% (28/140 cases) \\
+    Security rate (attacks blocked) & 24.3\% (34/140) \\
+    \textbf{Targeted ASR} & \textbf{75.7\%} (106/140) \\
+    Injection goals achievable when asked directly & 7/14 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\textbf{Interpretation:} without defense the agent is highly vulnerable (targeted attack success rate $\approx$ 76\%). Benign utility remains high (100\%), so the agent is capable but fails to resist injections. This baseline is the reference point for subsequent treatments (T1--T4).
+
+\textbf{Example (from traces):} for user task ``Who is invited to the Networking event?'', an injection hidden in a calendar event description instructs the agent to delete a file; the agent calls \texttt{delete\_file}---attack success while the user task may still pass.
+
+\section{Theoretical Formulation}
+
+\subsection{Threat Model}
+
+\begin{itemize}
+  \item \textbf{Trusted sources:} system prompt, user task, tool schemas.
+  \item \textbf{Untrusted sources:} tool outputs, RAG chunks, memory entries derived from untrusted data.
+  \item \textbf{Privileged sinks:} tools that modify external state (\texttt{send\_email}, \texttt{delete\_file}, \texttt{transfer\_money}, etc.).
+\end{itemize}
+
+\subsection{Symbolic Taint Model}
+
+Each text span $s$ carries a trust label $\mathrm{trust}(s) \in \{\text{trusted}, \text{untrusted}, \text{derived\_untrusted}\}$ and a provenance identifier (e.g., which tool output it came from).
+
+\textbf{Propagation rules} (deterministic):
+\begin{itemize}
+  \item any tool output $\rightarrow$ \texttt{untrusted};
+  \item copying or quoting untrusted text into tool arguments $\rightarrow$ \texttt{derived\_untrusted}.
+\end{itemize}
+
+\subsection{Gate Policy}
+
+Before executing a privileged tool $f$ with arguments $\mathbf{a}$:
+\[
+\exists\, \mathrm{arg} \in \mathbf{a} : \mathrm{trust}(\mathrm{arg}) \neq \text{trusted} \;\Rightarrow\; \text{block}
+\]
+(with optional sanitization in later treatments).
+
+\subsection{Hypothesis and Metrics}
+
+\textbf{Hypothesis:} explicit provenance tracking and gating on privileged arguments reduces \textbf{Targeted ASR} while keeping \textbf{Benign Utility} acceptable.
+
+\textbf{Metrics} (from AgentDojo): Benign Utility, Utility Under Attack, Targeted ASR; ablation over treatments T0 $\rightarrow$ T1 $\rightarrow$ T2 $\rightarrow$ T3.
+
+Formal noninterference guarantees are a longer-term goal; the current phase uses operational metrics and trace analysis.
+
+\section{Practical Formulation}
+
+\subsection{Platform}
+
+\textbf{AgentDojo} provides a simulated workspace environment, user tasks, injection goals, attack templates, and automated checkers. Our defense integrates as a \texttt{BasePipelineElement} in the agent pipeline, intercepting tool calls before execution.
+
+\subsection{Planned Code Structure}
+
+\begin{verbatim}
+src/taint/     -- models, propagation, gate, sanitizer
+src/agent/     -- AgentDojo pipeline integration
+eval/          -- benchmark runner, metrics
+configs/       -- privileged_tools.yaml
+\end{verbatim}
+
+\subsection{Experimental Treatments}
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    \textbf{Treatment} & \textbf{Description} & \textbf{Status} \\
+    \midrule
+    T0 & Baseline, no defense & Done \\
+    T1 & Taint tags + traces, gate off & Next \\
+    T2 & Strict gate on privileged tools & Planned \\
+    T3 & Gate on sensitive fields only & Planned \\
+    T4 & Rule-based sanitizer & Optional \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Evaluation Subset}
+
+Primary ASR will be reported on the \textbf{7 injection tasks} (out of 14) that the agent can complete when the attack goal is given directly as the user prompt; the full 140 cases serve as supplementary results. This avoids conflating ``attack blocked'' with ``attack goal too hard for the agent.''
+
+\textbf{Stack:} Python 3.11+, AgentDojo, OpenAI-compatible API, pytest.
+
+\section{First Implementation Step}
+
+\textbf{T1 --- Tag-only layer} (immediate next step after baseline):
+
+\begin{enumerate}
+  \item Implement \texttt{TaintedSpan}, a taint registry, and symbolic propagation rules.
+  \item Integrate as a \texttt{BasePipelineElement} in the AgentDojo pipeline.
+  \item Keep the gate \textbf{disabled}; log \texttt{TaintTrace} JSON per agent step.
+  \item Re-run the same evaluation subset: ASR should remain $\approx$ T0; traces should expose taint leakage into tool arguments.
+  \item Add unit tests for synthetic cases (e.g., email body $\rightarrow$ \texttt{send\_email(to=...)}).
+\end{enumerate}
+
+\textbf{Completion criterion for T1:} traces correctly show provenance lineage; the system is ready to enable the gate in T2.
+
+\end{document}
