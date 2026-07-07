@@ -1,43 +1,43 @@
-# T1 Spec: Tag-Only Taint Layer
+# Спецификация T1: слой taint-tracking только с метками
 
-## Goal
+## Цель
 
-T1 adds a standalone taint-tracking layer for AgentDojo workspace runs. It records trust labels and provenance lineage for strings that flow from tool outputs into later tool-call arguments.
+T1 добавляет самостоятельный слой taint-tracking для запусков AgentDojo workspace. Он записывает метки доверия и lineage происхождения для строк, которые переходят из результатов tool-вызовов в аргументы последующих tool-вызовов.
 
-The T1 gate is OFF. The layer must not block, rewrite, delay, or otherwise change tool execution behavior. T0 baseline scripts and metrics remain valid references.
+Gate в T1 выключен. Слой не должен блокировать, переписывать, задерживать или иным образом менять поведение выполнения tools. Скрипты и метрики T0 baseline остаются валидными точками сравнения.
 
-## Non-Goals
+## Не входит в цели
 
-- No blocking of privileged tool calls.
-- No sanitizer, rewriting, redaction, or LLM prompt transformation.
-- No retraining or model changes.
-- No claim of complete information-flow tracking inside the LLM.
-- No change to `scripts/run_t0_baseline.ps1` or T0 collection behavior.
+- Не блокировать привилегированные tool-вызовы.
+- Не выполнять sanitizer, rewriting, redaction или трансформацию LLM prompt.
+- Не выполнять retraining и не менять модель.
+- Не заявлять о полном information-flow tracking внутри LLM.
+- Не менять `scripts/run_t0_baseline.ps1` или поведение сбора T0.
 
-## Trust Labels
+## Метки доверия
 
-- `trusted`: system prompt, user task, tool schemas, and constants authored by the benchmark harness.
-- `untrusted`: direct external/tool output, including email bodies, calendar descriptions, drive file contents, and other workspace data returned by tools.
-- `derived_untrusted`: a later string that copies, quotes, formats, or otherwise includes text from an untrusted span.
+- `trusted`: system prompt, user task, tool schemas и константы, заданные benchmark harness.
+- `untrusted`: прямой внешний/tool output, включая тела писем, описания событий календаря, содержимое файлов drive и другие workspace-данные, возвращённые tools.
+- `derived_untrusted`: последующая строка, которая копирует, цитирует, форматирует или иным образом включает текст из untrusted span.
 
-For T1, `derived_untrusted` is observational only. T2 will decide whether to block.
+В T1 метка `derived_untrusted` используется только для наблюдения. Решение о блокировке относится к T2.
 
-## Data Model and API
+## Модель данных и API
 
 ### `TaintedSpan`
 
-Represents a labeled text fragment:
+Представляет размеченный текстовый фрагмент:
 
-- `span_id`: stable unique id.
-- `text`: exact string fragment.
-- `label`: one of `trusted`, `untrusted`, `derived_untrusted`.
-- `source`: source descriptor such as `tool:read_inbox`.
-- `parents`: zero or more parent span ids.
-- `metadata`: optional JSON-serializable context.
+- `span_id`: стабильный уникальный id.
+- `text`: точный строковый фрагмент.
+- `label`: одно из значений `trusted`, `untrusted`, `derived_untrusted`.
+- `source`: дескриптор источника, например `tool:read_inbox`.
+- `parents`: ноль или больше `span_id` родительских spans.
+- `metadata`: необязательный JSON-serializable контекст.
 
 ### `TaintRegistry`
 
-In-memory index for spans:
+In-memory индекс для spans:
 
 - `add_span(text, label, source, parents=None, metadata=None) -> TaintedSpan`
 - `mark_tool_output(tool_name, output, metadata=None) -> list[TaintedSpan]`
@@ -45,11 +45,11 @@ In-memory index for spans:
 - `find_in_text(text) -> list[TaintedSpan]`
 - `label_for_text(text) -> TrustLabel`
 
-`derive_from_text` searches for already-registered untrusted spans copied into `text`. If found, it creates a `derived_untrusted` span with those spans as parents; otherwise it creates a `trusted` span.
+`derive_from_text` ищет уже зарегистрированные untrusted spans, скопированные в `text`. Если такие spans найдены, метод создаёт span `derived_untrusted` с найденными spans в качестве `parents`; иначе создаёт span `trusted`.
 
 ### `TaintTrace`
 
-Serializable event log:
+Сериализуемый журнал событий:
 
 - `trace_id`
 - `events`
@@ -58,43 +58,43 @@ Serializable event log:
 - `to_dict()`
 - `write_json(path)`
 
-`blocked` is always `false` in T1.
+В T1 поле `blocked` всегда равно `false`.
 
-## Propagation Rules
+## Правила распространения
 
-1. Tool outputs are `untrusted`.
-2. If a later string contains an exact registered untrusted span, the later string is `derived_untrusted`.
-3. If a dictionary/list/tuple/set is passed as tool output, T1 recursively extracts string leaves and labels each leaf as `untrusted`.
-4. Tool-call arguments are inspected recursively. String leaves are labeled with `derive_from_text`.
-5. Non-string scalar values are not tainted in T1 unless their string representation contains a known untrusted span. This is conservative for the current workspace suite, where injection payloads are textual.
+1. Tool outputs получают метку `untrusted`.
+2. Если последующая строка содержит точный зарегистрированный untrusted span, эта строка получает метку `derived_untrusted`.
+3. Если dictionary/list/tuple/set передан как tool output, T1 рекурсивно извлекает строковые листья и помечает каждый лист как `untrusted`.
+4. Аргументы tool-вызовов проверяются рекурсивно. Строковые листья размечаются через `derive_from_text`.
+5. Нестрочные scalar values в T1 не получают taint, если только их строковое представление не содержит известный untrusted span. Это консервативно для текущего workspace suite, где injection payloads являются текстовыми.
 
-## AgentDojo Integration Point
+## Точка интеграции с AgentDojo
 
-AgentDojo pipelines are built from `BasePipelineElement` elements. Tool execution is performed inside `ToolsExecutionLoop`, typically through `ToolsExecutor`.
+Pipelines AgentDojo строятся из элементов `BasePipelineElement`. Выполнение tools происходит внутри `ToolsExecutionLoop`, обычно через `ToolsExecutor`.
 
-T1 should be inserted as a passive observer next to tool execution:
+T1 должен быть добавлен рядом с выполнением tools как пассивный observer:
 
-1. after tool outputs are produced, call `record_tool_output`;
-2. before the next tool call is executed, call `record_tool_call`;
-3. return the original pipeline data unchanged.
+1. после получения tool outputs вызвать `record_tool_output`;
+2. перед выполнением следующего tool call вызвать `record_tool_call`;
+3. вернуть исходные pipeline data без изменений.
 
-The lightweight skeleton lives in `src/taint/agentdojo_hook.py`. It intentionally avoids changing benchmark configuration until the exact AgentDojo `BasePipelineElement` method signature is verified against the installed package. The integration TODO is to subclass `agentdojo.agent_pipeline.BasePipelineElement` and place the observer around `ToolsExecutor` inside the workspace benchmark pipeline.
+Лёгкий skeleton находится в `src/taint/agentdojo_hook.py`. Он намеренно не меняет benchmark configuration, пока точная сигнатура метода AgentDojo `BasePipelineElement` не будет проверена по установленному пакету. TODO для интеграции: создать subclass `agentdojo.agent_pipeline.BasePipelineElement` и разместить observer вокруг `ToolsExecutor` внутри workspace benchmark pipeline.
 
-## Trace JSON Schema
+## JSON-схема trace
 
-Default output directory:
+Директория вывода по умолчанию:
 
 ```text
 results/T1_traces/
 ```
 
-One trace file per benchmark case:
+Один trace-файл на каждый benchmark case:
 
 ```text
 results/T1_traces/{case_id}.taint.json
 ```
 
-Schema:
+Схема:
 
 ```json
 {
@@ -122,34 +122,34 @@ Schema:
 }
 ```
 
-## Acceptance Criteria
+## Критерии приёмки
 
-- Unit tests pass without requiring an API key or live AgentDojo run.
-- Tool output string leaves are labeled `untrusted`.
-- Exact copies from untrusted text into later strings become `derived_untrusted`.
-- Registry preserves parent lineage.
-- Trace JSON can be serialized and reloaded.
-- Synthetic email-to-`send_email` case shows untrusted email content flowing into a privileged tool argument.
-- T1 does not block: every recorded tool call has `blocked=false`.
-- T0 scripts remain unchanged.
+- Unit tests проходят без API key и без live AgentDojo run.
+- Строковые листья tool output получают метку `untrusted`.
+- Точные копии untrusted text в последующих строках становятся `derived_untrusted`.
+- Registry сохраняет parent lineage.
+- Trace JSON можно сериализовать и загрузить обратно.
+- Синтетический сценарий email-to-`send_email` показывает, что untrusted email content попадает в аргумент привилегированного tool.
+- T1 не блокирует: у каждого записанного tool call поле `blocked=false`.
+- Скрипты T0 остаются без изменений.
 
-## Tests
+## Тесты
 
-Focused tests live under `tests/`:
+Фокусные тесты находятся в `tests/`:
 
-- label enum and span serialization;
-- registry add/find/derive behavior;
-- recursive tool output propagation;
-- trace JSON serialization;
-- synthetic `read_email` output to `send_email(to=...)` lineage.
+- label enum и сериализация span;
+- поведение registry add/find/derive;
+- рекурсивное распространение tool output;
+- сериализация trace JSON;
+- lineage для синтетического перехода от output `read_email` к `send_email(to=...)`.
 
-## T2 Preview
+## Предварительный обзор T2
 
-T2 will add the gate:
+T2 добавит gate:
 
-- classify privileged tools and sensitive fields;
-- block or allow tool calls based on tainted arguments;
-- emit explicit gate decisions;
-- measure Targeted ASR and Benign Utility against T0.
+- классификацию privileged tools и sensitive fields;
+- block или allow для tool calls на основе tainted arguments;
+- явные gate decisions;
+- измерение Targeted ASR и Benign Utility относительно T0.
 
-T2 is explicitly out of scope for T1. T1 only records evidence needed to design and debug the gate.
+T2 явно находится вне scope T1. T1 только записывает evidence, необходимое для проектирования и отладки gate.
