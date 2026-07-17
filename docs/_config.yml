@@ -1,0 +1,4 @@
+theme: jekyll-theme-slate
+title: Provenance-Gated Defense against Prompt Injection
+description: Символическая защита tool-using LLM-агентов от indirect prompt injection — taint tracking и gate-политики, измеренные на AgentDojo.
+show_downloads: false
