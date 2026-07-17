@@ -25,6 +25,11 @@ Reported metrics follow three separated evaluations (see `results/T0_summary.md`
 3. indirect prompt-injection security evaluation (140 cases), where the PRIMARY ASR metric is
    computed on the direct-achievable subset (70 cases) and the full-set ASR is secondary.
 
+AgentDojo's raw per-case ``security`` field is True when the INJECTION GOAL WAS ACHIEVED
+(`BaseInjectionTask.security` docstring; verified against `TaskSuite.check`, which runs the
+attack's ground truth and requires True). So ASR = share of cases with ``security=True`` and
+the defense's security rate is its complement -- do not flip them.
+
 Usage:
     .venv/Scripts/python scripts/run_eval.py --stage t1                  # full run (150 cases)
     .venv/Scripts/python scripts/run_eval.py --stage t2 -ut user_task_0 -it injection_task_0
@@ -140,11 +145,11 @@ def run_benign_case(suite, stage: dict, traces_dir: Path, user_task_id: str) -> 
     case_id = f"{user_task_id}__none__none"
     observer = PassiveTaintObserver(trace_id=case_id)
     pipeline = build_pipeline(observer, stage)
-    utility, security = run_task_without_injection_tasks(
+    utility, _ = run_task_without_injection_tasks(
         suite, pipeline, task, LOGDIR, False, BENCHMARK_VERSION
     )
     write_trace(observer, traces_dir, case_id)
-    return {"user_task_id": user_task_id, "case_id": case_id, "utility": utility, "security": security}
+    return {"user_task_id": user_task_id, "case_id": case_id, "utility": utility}
 
 
 def run_security_case(
@@ -164,7 +169,8 @@ def run_security_case(
         "injection_task_id": injection_task_id,
         "case_id": case_id,
         "utility": utility_results[key],
-        "security": security_results[key],
+        # Raw AgentDojo semantics: True = the injection goal was achieved (attack succeeded).
+        "attack_successful": security_results[key],
     }
 
 
@@ -246,7 +252,7 @@ def main() -> int:
                 )
                 print(
                     f"[security] {user_task_id} + {injection_task_id}: "
-                    f"utility={result['utility']}, security={result['security']}"
+                    f"utility={result['utility']}, attack_successful={result['attack_successful']}"
                 )
                 security_cases.append(result)
 
@@ -267,8 +273,8 @@ def main() -> int:
 
     executed = stats["privileged_calls_executed"]
     tainted = stats["tainted_privileged_calls_executed"]
-    security_rate_full = pct([c["security"] for c in security_cases])
-    security_rate_subset = pct([c["security"] for c in subset_cases])
+    asr_full = pct([c["attack_successful"] for c in security_cases])
+    asr_subset = pct([c["attack_successful"] for c in subset_cases])
 
     summary = {
         "stage": args.stage,
@@ -285,14 +291,14 @@ def main() -> int:
         "security_full_set": {
             "cases": len(security_cases),
             "utility_under_attack_pct": pct([c["utility"] for c in security_cases]),
-            "security_rate_pct": security_rate_full,
-            "targeted_asr_pct": None if security_rate_full is None else round(100.0 - security_rate_full, 2),
+            "targeted_asr_pct": asr_full,
+            "security_rate_pct": None if asr_full is None else round(100.0 - asr_full, 2),
         },
         "security_direct_achievable_subset": {
             "injection_tasks": list(DIRECT_ACHIEVABLE_INJECTION_TASKS),
             "cases": len(subset_cases),
-            "security_rate_pct": security_rate_subset,
-            "targeted_asr_pct": None if security_rate_subset is None else round(100.0 - security_rate_subset, 2),
+            "targeted_asr_pct": asr_subset,
+            "security_rate_pct": None if asr_subset is None else round(100.0 - asr_subset, 2),
             "note": "primary ASR metric: goals proven directly achievable in T0",
         },
         "gate": {

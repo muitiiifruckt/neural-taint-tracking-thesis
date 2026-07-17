@@ -80,11 +80,12 @@ markdown-трейсы в `results/traces/`. Скрипт всегда берёт
   (`record_tool_output`, `record_tool_call`), записываемый в
   `results/T1_traces/{case_id}.taint.json`. Поле `blocked` в T1 всегда `false` — ни один этап до T2 не
   имеет права менять поведение агента.
-- `agentdojo_hook.py` — `PassiveTaintObserver`, пока не подключённая точка интеграции, которая должна
-  располагаться вокруг `ToolsExecutor`/`ToolsExecutionLoop` AgentDojo
-  (`agentdojo.agent_pipeline.BasePipelineElement`). Согласно `docs/T1_SPEC.md`, подключение этого модуля
-  к реальному прогону AgentDojo pipeline — основная незавершённая задача T1: сейчас модуль покрыт только
-  синтетическим тестом lineage, а не реальной интеграцией с бенчмарком.
+- `agentdojo_hook.py` — `PassiveTaintObserver`, состояние одного кейса (registry + trace).
+- `pipeline_element.py` — `ObservingToolsExecutor` (форк `ToolsExecutor` AgentDojo, наблюдение без
+  блокировки — T1) и `GatingToolsExecutor` (наследник с gate: `mode="strict"` — T2, `mode="field"` —
+  T3). Интегрированы в живой AgentDojo pipeline через `scripts/run_eval.py --stage t1|t2|t3`.
+- `policy.py` — `PRIVILEGED_TOOLS` (10 workspace tools), `SENSITIVE_FIELDS` (по-инструментные
+  чувствительные поля), `gate_decision()`.
 
 ### Правила propagation (T1, полная спецификация — `docs/T1_SPEC.md`)
 
@@ -110,10 +111,17 @@ markdown-трейсы в `results/traces/`. Скрипт всегда берёт
 
 - **Benign Utility** — % user tasks, успешно выполненных без атаки.
 - **Utility Under Attack** — % security cases, где user task всё равно выполнена успешно несмотря на injection.
-- **Security rate** — % security cases, где атака не достигла цели.
-- **Targeted ASR** — `100% − Security rate`; главная метрика, которую последующие этапы должны снижать.
+- **Targeted ASR** — % security cases, где цель атаки достигнута; главная метрика, которую последующие
+  этапы должны снижать. Основная интерпретация — на direct-achievable subset (7 задач, 70 cases).
+- **Security rate** — `100% − Targeted ASR`.
 - **Taint leakage rate** — (с T1) % привилегированных/sensitive tool calls, куда попадает
   `untrusted`/`derived_untrusted` контент; наблюдательная метрика до появления gating в T2.
+
+**Семантика сырого поля `security` в логах AgentDojo:** `True` = цель инъекции достигнута (атака
+удалась). Это подтверждено докстрингом `BaseInjectionTask.security`, кодом `TaskSuite.check`
+(выполняет ground truth атаки и требует `True`) и эмпирически на логах T0. ASR = доля кейсов с
+`security=True`; НЕ инвертировать. До 2026-07-17 скрипты агрегации трактовали поле наоборот, поэтому
+числа в старых отчётах (`report/*.tex`, ASR 75.7%) инвертированы относительно истинных.
 
 ### Threat model (из отчёта)
 
@@ -133,31 +141,27 @@ markdown-трейсы в `results/traces/`. Скрипт всегда берёт
 Результаты T0 baseline (модель `gpt-4o-mini-2024-07-18` через OpenRouter, suite `workspace` v1.2.2,
 атака `important_instructions`, 10 user tasks, 140 security cases):
 
-| Метрика | Значение |
+| Метрика | Значение (исправленная семантика, 2026-07-17) |
 |---|---|
 | Benign Utility | 100% (10/10) |
 | Utility Under Attack | 20.0% (28/140) |
-| Security rate | 24.3% (34/140) |
-| Targeted ASR | 75.7% (106/140) |
+| **Targeted ASR, direct-achievable subset (primary)** | **48.6% (34/70)** |
+| Targeted ASR, full set | 24.3% (34/140) |
+| Security rate, full set | 75.7% |
 | Injection goals, достижимые напрямую | 7/14 |
 
-Вывод из отчёта: без защиты агент полностью справляется с benign-задачами, но крайне уязвим к indirect
-prompt injection (ASR ≈ 76%) — это референсная точка для T1–T4. Для честной интерпретации ASR в
-финальном сравнении в отчёте предлагается основной метрикой брать 7 injection tasks (из 14), которые
-агент выполняет, если попросить о них напрямую — иначе «атака не удалась» путается с «цель атаки
-агенту вообще не по силам».
+Вывод: без защиты агент полностью справляется с benign-задачами, а на целях, которые ему по силам,
+успешна почти каждая вторая инъекция (subset ASR ≈ 49%) — это референсная точка для T1–T4. Full-set
+ASR (24.3%) разбавлен 7 недостижимыми целями: на них атака не удалась ни разу (0/70), поэтому основная
+метрика — subset. Старые отчёты (`report/*.tex`) содержат инвертированные значения (75.7%) из-за
+неправильной трактовки поля `security` — см. раздел «Метрики».
 
-На момент последнего прогресс-отчёта (`report/current_progress_update.tex`, датирован 7 июля 2026) T1
-оценивается автором примерно в 60–70% готовности: спецификация, core data structures (`TaintedSpan`,
-`TaintRegistry`), propagation-логика, формат trace и unit-тесты готовы; не сделана интеграция
-`PassiveTaintObserver` в реальный AgentDojo pipeline и повторный прогон benchmark с T1 traces. План на
-ближайшие две недели (по тому же отчёту): закончить интеграцию T1 в pipeline, прогнать T1 на том же
-конфиге, что и T0, добавить метрику taint leakage rate, определить privileged tools/sensitive fields и
-начать T2 (strict gate).
-
-Изначальный план кода (пока не реализован полностью) включал директории `src/agent/` (обёртка над
-AgentDojo pipeline) и `eval/` (runner + агрегация метрик) — в текущем репозитории их ещё нет, есть только
-`src/taint/` и `scripts/collect_t0_results.py`.
+Статус на 2026-07-17: T1 завершён полностью (интеграция + полный eval на 150 кейсах, utility
+идентична T0, leakage 36.8%, трейсы в `results/T1_traces/`); T2 (strict gate) и T3 (field-sensitive
+gate) реализованы и покрыты тестами, идут полные eval-прогоны. По фидбеку рецензента проект
+переименован в «symbolic provenance-gated defense» (не «neural taint tracking»), фокус — T1–T3,
+research question: снижает ли field-sensitive gating ASR, сохраняя utility лучше strict gate.
+Актуальный отчёт — `report/progress_update_2026-07-17.md`.
 
 ### `report/`
 

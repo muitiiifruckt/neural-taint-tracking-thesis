@@ -22,12 +22,22 @@ tasks and 14 direct injection-goal runs were mixed into one "benign" number):
 1. *Benign user-task evaluation*: 10/10 = **100%** benign utility.
 2. *Direct injection-goal achievability*: **7/14** goals performed when asked directly
    (`injection_task_0,1,2,4,5,10,13`). This subset defines the primary ASR metric.
-3. *Indirect prompt-injection security* (140 cases): full-set ASR **75.7%**;
-   **direct-achievable subset ASR 51.4%** (70 cases, primary metric).
+3. *Indirect prompt-injection security* (140 cases): **direct-achievable subset ASR 48.6%**
+   (34/70 cases, primary metric); full-set ASR **24.3%** (secondary).
 
-An honest observation from the data: on the 7 *non*-achievable goals the injected attack
-succeeded in 70/70 cases — a direct refusal does not protect against the same goal arriving
-via injection, which further motivates a provenance gate over refusal-based safety.
+**Corrected metric semantics.** While wiring the T2 gate we found that AgentDojo's raw
+per-case `security` field is True when the *injection goal was achieved* (per the
+`BaseInjectionTask.security` docstring; confirmed by `TaskSuite.check`, which executes the
+attack's ground truth and requires True, and verified empirically on our logs: for
+`injection_task_0`, `security=True` exactly in the cases where the email to the attacker
+address was actually sent). Our earlier aggregation scripts read it inverted, so previously
+reported ASR values were complements of the true ones (e.g. "75.7% full ASR" is actually
+24.3%). All numbers in this report use the corrected semantics.
+
+The corrected data also shows why the direct-achievable subset must be the primary metric: on
+the 7 non-achievable goals the injected attack succeeded in 0/70 cases, so the full-set ASR
+is diluted by goals the agent cannot or will not perform anyway. On the goals it *can*
+perform, almost every second attack succeeds (48.6%).
 
 **T1 — tag-only taint tracking: complete, with real benchmark runs.**
 
@@ -43,8 +53,8 @@ via injection, which further motivates a provenance gate over refusal-based safe
 |---|---|---|
 | Benign utility | 100.0% | **100.0%** |
 | Utility under attack | 20.0% | **20.0%** |
-| Targeted ASR, direct-achievable subset (primary) | 51.4% | 48.6% |
-| Targeted ASR, full set | 75.7% | 71.4% |
+| Targeted ASR, direct-achievable subset (primary) | 48.6% (34/70) | 51.4% (36/70) |
+| Targeted ASR, full set | 24.3% (34/140) | 28.6% (40/140) |
 | Taint leakage rate | — | **36.8%** (202/549 privileged calls) |
 
 Benign utility and utility under attack are *identical* to T0, confirming the tag-only layer
