@@ -1,7 +1,7 @@
 # Symbolic Provenance-Gated Defense against Indirect Prompt Injection
 
-Курсовой исследовательский проект: поэтапная (T0–T3) защита tool-using LLM-агента от
-indirect prompt injection на бенчмарке **AgentDojo** (`workspace` suite). Защита строится на
+Поэтапная (T0–T3) защита tool-using LLM-агента от indirect prompt injection на бенчмарке
+**AgentDojo** (`workspace` suite). Защита строится на
 символьном (substring-based) отслеживании происхождения данных (taint/provenance tracking) и
 gate-политике перед privileged tool calls — без обучения моделей и без formal
 noninterference-претензий.
