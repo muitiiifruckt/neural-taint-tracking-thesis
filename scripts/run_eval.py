@@ -47,23 +47,15 @@ sys.path.insert(0, str(ROOT))  # allow `from src.taint...` when run as `python s
 
 from dotenv import load_dotenv
 
-from agentdojo.agent_pipeline.agent_pipeline import AgentPipeline, get_llm, load_system_message
-from agentdojo.agent_pipeline.basic_elements import InitQuery, SystemMessage
-from agentdojo.agent_pipeline.tool_execution import ToolsExecutionLoop
 from agentdojo.attacks.attack_registry import load_attack
 from agentdojo.benchmark import run_task_with_injection_tasks, run_task_without_injection_tasks
 from agentdojo.logging import OutputLogger
-from agentdojo.models import MODEL_PROVIDERS, ModelsEnum
 from agentdojo.task_suite.load_suites import get_suite
 
+from src.agent.metrics import asr_and_security_rate, pct
+from src.agent.pipeline import ATTACK_NAME, BENCHMARK_VERSION, MODEL, STAGES, SUITE_NAME, build_pipeline
 from src.taint.agentdojo_hook import PassiveTaintObserver
-from src.taint.pipeline_element import GatingToolsExecutor, ObservingToolsExecutor
 from src.taint.policy import PRIVILEGED_TOOLS
-
-MODEL = "gpt-4o-mini-2024-07-18"
-SUITE_NAME = "workspace"
-BENCHMARK_VERSION = "v1.2.2"
-ATTACK_NAME = "important_instructions"
 
 # Fixed benchmark shape (asserted on full runs so a silent suite change cannot skew results).
 EXPECTED_USER_TASKS = 10
@@ -83,46 +75,8 @@ DIRECT_ACHIEVABLE_INJECTION_TASKS = (
     "injection_task_13",
 )
 
-STAGES = {
-    "t1": {
-        "pipeline_name": f"{MODEL}-t1-taint",
-        "defense": "t1-tag-only (gate disabled)",
-        "traces_dirname": "T1_traces",
-        "summary_name": "T1_summary.json",
-        "gate_mode": "off",
-    },
-    "t2": {
-        "pipeline_name": f"{MODEL}-t2-strict-gate",
-        "defense": "t2-strict-gate (block privileged call on any tainted argument)",
-        "traces_dirname": "T2_traces",
-        "summary_name": "T2_summary.json",
-        "gate_mode": "strict",
-    },
-    "t3": {
-        "pipeline_name": f"{MODEL}-t3-field-gate",
-        "defense": "t3-field-gate (block privileged call on tainted sensitive fields only)",
-        "traces_dirname": "T3_traces",
-        "summary_name": "T3_summary.json",
-        "gate_mode": "field",
-    },
-}
-
 LOGDIR = ROOT / "runs"
 RESULTS_DIR = ROOT / "results"
-
-
-def build_pipeline(observer: PassiveTaintObserver, stage: dict) -> AgentPipeline:
-    llm = get_llm(MODEL_PROVIDERS[ModelsEnum(MODEL)], MODEL, None, "tool")
-    if stage["gate_mode"] == "off":
-        executor = ObservingToolsExecutor(observer)
-    else:
-        executor = GatingToolsExecutor(observer, mode=stage["gate_mode"])
-    tools_loop = ToolsExecutionLoop([executor, llm])
-    pipeline = AgentPipeline(
-        [SystemMessage(load_system_message(None)), InitQuery(), llm, tools_loop]
-    )
-    pipeline.name = stage["pipeline_name"]
-    return pipeline
 
 
 def write_trace(observer: PassiveTaintObserver, traces_dir: Path, case_id: str) -> None:
@@ -208,10 +162,6 @@ def trace_stats(traces_dir: Path, case_ids: list[str]) -> dict:
     return stats
 
 
-def pct(values: list[bool]) -> float | None:
-    return None if not values else round(100.0 * sum(values) / len(values), 2)
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--stage", choices=sorted(STAGES), required=True)
@@ -273,8 +223,10 @@ def main() -> int:
 
     executed = stats["privileged_calls_executed"]
     tainted = stats["tainted_privileged_calls_executed"]
-    asr_full = pct([c["attack_successful"] for c in security_cases])
-    asr_subset = pct([c["attack_successful"] for c in subset_cases])
+    asr_full, security_rate_full = asr_and_security_rate([c["attack_successful"] for c in security_cases])
+    asr_subset, security_rate_subset = asr_and_security_rate(
+        [c["attack_successful"] for c in subset_cases]
+    )
 
     summary = {
         "stage": args.stage,
@@ -292,13 +244,13 @@ def main() -> int:
             "cases": len(security_cases),
             "utility_under_attack_pct": pct([c["utility"] for c in security_cases]),
             "targeted_asr_pct": asr_full,
-            "security_rate_pct": None if asr_full is None else round(100.0 - asr_full, 2),
+            "security_rate_pct": security_rate_full,
         },
         "security_direct_achievable_subset": {
             "injection_tasks": list(DIRECT_ACHIEVABLE_INJECTION_TASKS),
             "cases": len(subset_cases),
             "targeted_asr_pct": asr_subset,
-            "security_rate_pct": None if asr_subset is None else round(100.0 - asr_subset, 2),
+            "security_rate_pct": security_rate_subset,
             "note": "primary ASR metric: goals proven directly achievable in T0",
         },
         "gate": {

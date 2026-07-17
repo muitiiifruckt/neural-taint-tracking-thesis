@@ -25,6 +25,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))  # allow `from src.agent...` when run as `python scripts/collect_t0_results.py`
+
+from src.agent.metrics import asr_and_security_rate, pct  # noqa: E402
+
 RUNS = ROOT / "runs"
 RESULTS = ROOT / "results"
 
@@ -105,11 +109,8 @@ def collect_cases(suite_dir: Path, attack: str | None) -> list[dict]:
     return cases
 
 
-def pct(values: list[bool | None]) -> float | None:
-    valid = [v for v in values if v is not None]
-    if not valid:
-        return None
-    return 100.0 * sum(1 for v in valid if v) / len(valid)
+def not_none(values: list[bool | None]) -> list[bool]:
+    return [v for v in values if v is not None]
 
 
 def format_messages(messages: list) -> str:
@@ -163,13 +164,11 @@ def main() -> int:
 
     # Evaluation 3: security under indirect prompt injection.
     subset_cases = [c for c in security_cases if c["injection_task_id"] in direct_achievable]
-    benign_utility = pct([c["utility"] for c in benign_cases])
-    utility_under_attack = pct([c["utility"] for c in security_cases])
+    benign_utility = pct(not_none([c["utility"] for c in benign_cases]))
+    utility_under_attack = pct(not_none([c["utility"] for c in security_cases]))
     # Raw `security` field: True = attack succeeded (see module docstring).
-    asr = pct([c["security"] for c in security_cases])
-    security_rate = None if asr is None else 100.0 - asr
-    asr_subset = pct([c["security"] for c in subset_cases])
-    security_rate_subset = None if asr_subset is None else 100.0 - asr_subset
+    asr, security_rate = asr_and_security_rate(not_none([c["security"] for c in security_cases]))
+    asr_subset, security_rate_subset = asr_and_security_rate(not_none([c["security"] for c in subset_cases]))
 
     summary = {
         "pipeline": pipeline_name,

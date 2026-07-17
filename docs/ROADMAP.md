@@ -224,9 +224,18 @@
    Сделано (2026-07-17): `GatingToolsExecutor` (`src/taint/pipeline_element.py`), `gate_decision`
    (`src/taint/policy.py`), тесты `tests/test_gate_policy.py` + `tests/test_gating_executor.py`,
    раннер `scripts/run_eval.py --stage t2|t3`.
-9. Прогнать полный eval T2 и T3 (по 150 кейсов) и собрать сравнительную таблицу T0–T3.
-   **Заблокировано 2026-07-17:** API снова отдаёт 403 «Access denied by security policy»
-   (OpenRouter) — проверить баланс/лимиты ключа и повторить
-   `scripts/run_eval.py --stage t2`, затем `--stage t3`.
-10. Обновить прогресс-отчёт с таблицей T0–T3 (direct-achievable ASR — основная метрика,
-    плюс full ASR, utility, overblock rate) и примерами трейсов.
+9. ~~Прогнать полный eval T2 и T3 (по 150 кейсов) и собрать сравнительную таблицу T0–T3.~~
+   Сделано (2026-07-17): API-доступ восстановлен, оба прогона завершены. T2 subset ASR 11.4%
+   (48.6%→11.4%), T3 subset ASR 8.6%; benign utility у обеих политик одинаково просела до 80%
+   (2/10 ложных блокировки на поле `participants` — общий bottleneck, не решаемый переходом
+   strict→field). Таблицы — `results/T2_summary.md`, `results/T3_summary.md`.
+10. ~~Обновить прогресс-отчёт с таблицей T0–T3 (direct-achievable ASR — основная метрика,
+    плюс full ASR, utility, overblock rate) и примерами трейсов.~~
+    Сделано: `report/progress_update_2026-07-17.md` содержит полную таблицу T0–T3, ответ на
+    research question, примеры трейсов (blocked exfiltration / allowed content-copy / false
+    positive) и раздел Limitations.
+11. **Опционально, если останется время:** попытаться закрыть остаточные атаки на
+    `injection_task_1` (короткий `file_id`, обходит `MIN_MATCH_LENGTH`) точным provenance-
+    сопоставлением вместо substring-порога; рассмотреть T4 (rule-based sanitizer/allowlist
+    для `participants`) как способ снизить overblock rate. Финальный текст отчёта — раздел
+    Limitations уже фиксирует эти два пункта как честно нерешённые.
