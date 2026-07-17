@@ -8,7 +8,11 @@
 - **T1 tag-only taint tracking завершён**: спецификация, core-логика, интеграция в AgentDojo pipeline,
   полный eval (10 benign + 140 security cases) и taint leakage rate измерены. Gate остаётся выключенным.
   Результаты — `results/T1_summary.md`.
-- **T2-T4 запланированы** как последовательные ablation-этапы: сначала строгая блокировка, затем более точная field-level политика, затем опциональный rule-based sanitizer.
+- **T2 и T3 реализованы в коде** (политика `src/taint/policy.py`, `GatingToolsExecutor`,
+  unit-тесты, спеки `docs/T2_SPEC.md`/`docs/T3_SPEC.md`); полный eval обоих этапов ожидает
+  восстановления доступа к API. T4 (rule-based sanitizer) — опциональный и вне ядра отчёта.
+- По фидбеку рецензента проект сфокусирован на T1–T3 и переименован в
+  «symbolic provenance-gated defense»; learned sanitizer и formal noninterference вне scope.
 
 ## T0: baseline без защиты
 
@@ -112,7 +116,8 @@
 - После исправлений, влияющих на классификацию аргументов или labels.
 - Перед проектированием T3, чтобы понять, где strict gate слишком грубый.
 
-Статус: **planned**.
+Статус: **implemented, eval pending** (код+тесты готовы; полный прогон ждёт API).
+Детальная спецификация — `docs/T2_SPEC.md`.
 
 ## T3: field-level gate
 
@@ -147,7 +152,8 @@
 - После анализа false positives/false negatives из T2.
 - Перед финальным выбором основной defense policy для отчёта.
 
-Статус: **planned**.
+Статус: **implemented, eval pending** (код+тесты готовы; полный прогон ждёт API).
+Детальная спецификация и таблица sensitive fields — `docs/T3_SPEC.md`.
 
 ## T4: rule-based sanitizer (optional)
 
@@ -199,7 +205,7 @@
 2. ~~Реализовать `ObservingToolsExecutor` в `src/taint/pipeline_element.py` и покрыть unit-тестами без сети.~~
    Сделано: форк `ToolsExecutor`, размечающий сырой (структурированный) tool output до форматирования в
    строку — обоснование в `docs/T1_SPEC.md`. Тесты — `tests/test_pipeline_element.py`.
-3. ~~Написать `scripts/run_t1_eval.py` — собственный раннер (стандартный `--defense` в `agentdojo.scripts.benchmark`
+3. ~~Написать `scripts/run_eval.py` — собственный раннер (стандартный `--defense` в `agentdojo.scripts.benchmark`
    не принимает произвольный `BasePipelineElement`), с новым `PassiveTaintObserver` на каждый кейс.~~
    Сделано.
 4. ~~Добавить end-to-end smoke run для одного benign case и одного security case с записью `results/T1_traces/`.~~
@@ -211,8 +217,16 @@
    Attack совпадают с T0 точно (100%, 20%) — критерий приёмки T1 выполнен. Таблица — `results/T1_summary.md`.
 6. ~~Посчитать и описать taint leakage rate для T1.~~
    Сделано: 202/549 (36.8%) вызовов privileged tools содержат untrusted/derived_untrusted аргумент.
-7. На основе T1 traces составить первоначальный список privileged tools и sensitive fields для T2/T3.
-   Draft-список privileged tools уже используется в `scripts/run_t1_eval.py::PRIVILEGED_TOOLS` (10 tools);
-   осталось формализовать как конфиг T2 и определить sensitive fields по каждому tool (для T3).
-8. Обновить прогресс-отчёт (`report/current_progress_update.tex` или новую версию) с результатами T1
-   и перейти к проектированию T2 (strict gate).
+7. ~~На основе T1 traces составить первоначальный список privileged tools и sensitive fields для T2/T3.~~
+   Сделано (2026-07-17): `src/taint/policy.py` — `PRIVILEGED_TOOLS` (10 tools) и `SENSITIVE_FIELDS`
+   (таблица с обоснованием — `docs/T3_SPEC.md`).
+8. ~~Реализовать T2 strict gate и T3 field-sensitive gate.~~
+   Сделано (2026-07-17): `GatingToolsExecutor` (`src/taint/pipeline_element.py`), `gate_decision`
+   (`src/taint/policy.py`), тесты `tests/test_gate_policy.py` + `tests/test_gating_executor.py`,
+   раннер `scripts/run_eval.py --stage t2|t3`.
+9. Прогнать полный eval T2 и T3 (по 150 кейсов) и собрать сравнительную таблицу T0–T3.
+   **Заблокировано 2026-07-17:** API снова отдаёт 403 «Access denied by security policy»
+   (OpenRouter) — проверить баланс/лимиты ключа и повторить
+   `scripts/run_eval.py --stage t2`, затем `--stage t3`.
+10. Обновить прогресс-отчёт с таблицей T0–T3 (direct-achievable ASR — основная метрика,
+    плюс full ASR, utility, overblock rate) и примерами трейсов.

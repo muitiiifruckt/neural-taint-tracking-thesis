@@ -1,8 +1,8 @@
-"""Live AgentDojo pipeline integration for the T1 passive taint observer.
+"""Live AgentDojo pipeline integration: T1 passive observer and T2/T3 gated executors.
 
 Kept separate from `agentdojo_hook.py` so that `src/taint/__init__.py` (imported by every
-unit test in this package) never has to import the `agentdojo` package. Only the T1 eval
-runner (`scripts/run_t1_eval.py`) and its tests import this module directly.
+unit test in this package) never has to import the `agentdojo` package. Only the eval
+runner (`scripts/run_eval.py`) and its tests import this module directly.
 
 `ObservingToolsExecutor` forks `agentdojo.agent_pipeline.tool_execution.ToolsExecutor` instead
 of wrapping it. By the time a stock `ToolsExecutor` appends a `ChatToolResultMessage`, the
@@ -26,10 +26,12 @@ from pydantic import BaseModel
 from agentdojo.agent_pipeline.base_pipeline_element import BasePipelineElement
 from agentdojo.agent_pipeline.llms.google_llm import EMPTY_FUNCTION_NAME
 from agentdojo.agent_pipeline.tool_execution import is_string_list, tool_result_to_str
-from agentdojo.functions_runtime import EmptyEnv, Env, FunctionReturnType, FunctionsRuntime
+from agentdojo.functions_runtime import EmptyEnv, Env, FunctionCall, FunctionReturnType, FunctionsRuntime
 from agentdojo.types import ChatMessage, ChatToolResultMessage, text_content_block_from_string
 
 from .agentdojo_hook import PassiveTaintObserver
+from .policy import gate_decision
+from .propagation import derive_argument_spans
 
 
 def _taint_input(value: FunctionReturnType):
@@ -103,25 +105,88 @@ class ObservingToolsExecutor(BasePipelineElement):
                 )
                 continue
 
-            self.observer.observe_tool_call(tool_call.function, dict(tool_call.args))
-
-            # Converts type of input lists from string to list type (same as ToolsExecutor).
-            for arg_k, arg_v in tool_call.args.items():
-                if isinstance(arg_v, str) and is_string_list(arg_v):
-                    tool_call.args[arg_k] = literal_eval(arg_v)
-
-            tool_call_result, error = runtime.run_function(env, tool_call.function, tool_call.args)
-            self.observer.observe_tool_output(tool_call.function, _taint_input(tool_call_result))
-
-            tool_call_id = tool_call.id
-            formatted_tool_call_result = self.output_formatter(tool_call_result)
-            tool_call_results.append(
-                ChatToolResultMessage(
-                    role="tool",
-                    content=[text_content_block_from_string(formatted_tool_call_result)],
-                    tool_call_id=tool_call_id,
-                    tool_call=tool_call,
-                    error=error,
-                )
-            )
+            tool_call_results.append(self._process_tool_call(tool_call, runtime, env))
         return query, runtime, env, [*messages, *tool_call_results], extra_args
+
+    def _process_tool_call(
+        self, tool_call: FunctionCall, runtime: FunctionsRuntime, env: Env
+    ) -> ChatToolResultMessage:
+        """Observe, execute, and format one valid tool call (never blocks)."""
+
+        self.observer.observe_tool_call(tool_call.function, dict(tool_call.args))
+        return self._execute_and_observe(tool_call, runtime, env)
+
+    def _execute_and_observe(
+        self, tool_call: FunctionCall, runtime: FunctionsRuntime, env: Env
+    ) -> ChatToolResultMessage:
+        # Converts type of input lists from string to list type (same as ToolsExecutor).
+        for arg_k, arg_v in tool_call.args.items():
+            if isinstance(arg_v, str) and is_string_list(arg_v):
+                tool_call.args[arg_k] = literal_eval(arg_v)
+
+        tool_call_result, error = runtime.run_function(env, tool_call.function, tool_call.args)
+        self.observer.observe_tool_output(tool_call.function, _taint_input(tool_call_result))
+
+        formatted_tool_call_result = self.output_formatter(tool_call_result)
+        return ChatToolResultMessage(
+            role="tool",
+            content=[text_content_block_from_string(formatted_tool_call_result)],
+            tool_call_id=tool_call.id,
+            tool_call=tool_call,
+            error=error,
+        )
+
+
+class GatingToolsExecutor(ObservingToolsExecutor):
+    """T2/T3 executor: same observation as `ObservingToolsExecutor`, plus a gate.
+
+    Before executing a tool call, argument spans are derived and `gate_decision`
+    (`src/taint/policy.py`) is consulted. A blocked call is NOT executed: the LLM receives a
+    `ChatToolResultMessage` whose `error` explains the block, and the trace records the call
+    with `blocked=true` and the gate reason, so blocked attempts stay visible for analysis.
+    `mode="strict"` (T2) blocks a privileged call on any tainted argument; `mode="field"`
+    (T3) blocks only when a tainted leaf belongs to the tool's sensitive fields.
+    """
+
+    def __init__(
+        self,
+        observer: PassiveTaintObserver,
+        mode: str,
+        tool_output_formatter: Callable[[FunctionReturnType], str] = tool_result_to_str,
+    ) -> None:
+        super().__init__(observer, tool_output_formatter)
+        self.mode = mode
+
+    def _process_tool_call(
+        self, tool_call: FunctionCall, runtime: FunctionsRuntime, env: Env
+    ) -> ChatToolResultMessage:
+        arguments = dict(tool_call.args)
+        argument_spans = derive_argument_spans(
+            registry=self.observer.registry,
+            tool_name=tool_call.function,
+            arguments=arguments,
+        )
+        decision = gate_decision(tool_call.function, argument_spans, self.mode)
+        self.observer.trace.record_tool_call(
+            tool_name=tool_call.function,
+            arguments=arguments,
+            argument_spans=argument_spans,
+            blocked=decision.blocked,
+            metadata={
+                "gate_mode": self.mode,
+                **(
+                    {"gate_reason": decision.reason, "tainted_paths": list(decision.tainted_paths)}
+                    if decision.blocked
+                    else {}
+                ),
+            },
+        )
+        if decision.blocked:
+            return ChatToolResultMessage(
+                role="tool",
+                content=[text_content_block_from_string("")],
+                tool_call_id=tool_call.id,
+                tool_call=tool_call,
+                error=decision.reason,
+            )
+        return self._execute_and_observe(tool_call, runtime, env)

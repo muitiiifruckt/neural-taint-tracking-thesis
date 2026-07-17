@@ -1,3 +1,4 @@
-agentdojo>=0.1.33
-python-dotenv>=1.0.0
-pytest
+# Pinned for reproducibility of the T0-T3 evaluation (see README, "Reproducibility").
+agentdojo==0.1.35
+python-dotenv==1.2.2
+pytest==9.1.1

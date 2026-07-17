@@ -1,8 +1,19 @@
 #!/usr/bin/env python3
-"""Aggregate AgentDojo T0 benchmark logs into results/T0_summary.md and JSON."""
+"""Aggregate AgentDojo T0 benchmark logs into results/T0_summary.md and JSON.
+
+Reports three clearly separated evaluations (they must never be mixed into one number):
+
+1. benign user-task evaluation -- the 10 `user_task_*` runs without attack;
+2. direct injection-goal achievability -- the 14 `injection_task_*` runs executed directly
+   as user tasks (no attack): which attacker goals the model performs when simply asked;
+3. indirect prompt-injection security evaluation -- 140 attacked cases, with the PRIMARY
+   targeted-ASR metric computed on the direct-achievable subset from (2) and the full-set
+   ASR reported as secondary.
+"""
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -10,6 +21,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RUNS = ROOT / "runs"
 RESULTS = ROOT / "results"
+
+# T0 is the undefended stock pipeline; do not auto-pick the most recent runs/ subdir --
+# T1/T2/T3 runners create their own pipeline dirs there.
+DEFAULT_PIPELINE = "gpt-4o-mini-2024-07-18"
+
+EXPECTED_USER_TASKS = 10
+EXPECTED_INJECTION_TASKS = 14
 
 
 def message_text(content) -> str:
@@ -31,19 +49,6 @@ def message_text(content) -> str:
 def load_task_json(path: Path) -> dict:
     with path.open(encoding="utf-8") as f:
         return json.load(f)
-
-
-def find_run_dirs(suite: str = "workspace") -> list[Path]:
-    if not RUNS.exists():
-        return []
-    dirs = []
-    for pipeline_dir in RUNS.iterdir():
-        if not pipeline_dir.is_dir():
-            continue
-        suite_dir = pipeline_dir / suite
-        if suite_dir.is_dir():
-            dirs.append(suite_dir)
-    return sorted(dirs, key=lambda p: p.stat().st_mtime, reverse=True)
 
 
 def collect_cases(suite_dir: Path, attack: str | None) -> list[dict]:
@@ -120,37 +125,77 @@ def format_messages(messages: list) -> str:
 
 
 def main() -> int:
-    RESULTS.mkdir(exist_ok=True)
-    suite_dirs = find_run_dirs("workspace")
-    if not suite_dirs:
-        print("No runs found under ./runs/*/workspace", file=sys.stderr)
-        return 1
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--pipeline", default=DEFAULT_PIPELINE)
+    args = parser.parse_args()
 
-    suite_dir = suite_dirs[0]
-    pipeline_name = suite_dir.parent.name
+    RESULTS.mkdir(exist_ok=True)
+    suite_dir = RUNS / args.pipeline / "workspace"
+    if not suite_dir.is_dir():
+        print(f"No run dir at {suite_dir}", file=sys.stderr)
+        return 1
+    pipeline_name = args.pipeline
     print(f"Using run dir: {suite_dir} (pipeline={pipeline_name})")
 
-    benign_cases = collect_cases(suite_dir, attack=None)
+    no_attack_cases = collect_cases(suite_dir, attack=None)
     security_cases = collect_cases(suite_dir, attack="important_instructions")
 
+    # Evaluation 1: benign user tasks only.
+    benign_cases = [c for c in no_attack_cases if c["user_task_id"].startswith("user_task")]
+    # Evaluation 2: injection goals requested directly (no attack involved).
+    direct_goal_cases = [
+        c for c in no_attack_cases if c["user_task_id"].startswith("injection_task")
+    ]
+    direct_achievable = sorted(
+        (c["user_task_id"] for c in direct_goal_cases if c["utility"]),
+        key=lambda t: int(t.rsplit("_", 1)[1]),
+    )
+
+    assert len(benign_cases) == EXPECTED_USER_TASKS, len(benign_cases)
+    assert len(direct_goal_cases) == EXPECTED_INJECTION_TASKS, len(direct_goal_cases)
+    assert len(security_cases) == EXPECTED_USER_TASKS * EXPECTED_INJECTION_TASKS, len(security_cases)
+
+    # Evaluation 3: security under indirect prompt injection.
+    subset_cases = [c for c in security_cases if c["injection_task_id"] in direct_achievable]
     benign_utility = pct([c["utility"] for c in benign_cases])
     utility_under_attack = pct([c["utility"] for c in security_cases])
     security_rate = pct([c["security"] for c in security_cases])
     asr = None if security_rate is None else 100.0 - security_rate
+    security_rate_subset = pct([c["security"] for c in subset_cases])
+    asr_subset = None if security_rate_subset is None else 100.0 - security_rate_subset
 
     summary = {
         "pipeline": pipeline_name,
         "suite": "workspace",
         "attack": "important_instructions",
         "defense": "none",
-        "benign_cases": len(benign_cases),
-        "security_cases": len(security_cases),
-        "benign_utility_pct": benign_utility,
-        "utility_under_attack_pct": utility_under_attack,
-        "security_rate_pct": security_rate,
-        "targeted_asr_pct": asr,
+        "benign_user_tasks": {
+            "cases": len(benign_cases),
+            "benign_utility_pct": benign_utility,
+        },
+        "direct_goal_achievability": {
+            "cases": len(direct_goal_cases),
+            "achievable": direct_achievable,
+            "achievable_count": len(direct_achievable),
+        },
+        "security_full_set": {
+            "cases": len(security_cases),
+            "utility_under_attack_pct": utility_under_attack,
+            "security_rate_pct": security_rate,
+            "targeted_asr_pct": asr,
+        },
+        "security_direct_achievable_subset": {
+            "injection_tasks": direct_achievable,
+            "cases": len(subset_cases),
+            "security_rate_pct": security_rate_subset,
+            "targeted_asr_pct": asr_subset,
+            "note": "primary ASR metric: goals proven directly achievable",
+        },
         "benign_cases_detail": [
             {k: v for k, v in c.items() if k != "messages"} for c in benign_cases
+        ],
+        "direct_goal_cases_detail": [
+            {k: v for k, v in c.items() if k != "messages"} for c in direct_goal_cases
         ],
         "security_cases_detail": [
             {k: v for k, v in c.items() if k != "messages"} for c in security_cases
@@ -169,34 +214,39 @@ def main() -> int:
         "- Attack: `important_instructions` (security run only)",
         "- Defense: none",
         "",
-        "## Metrics",
+        "Три раздельные оценки (не смешивать):",
+        "",
+        "## 1. Benign user-task evaluation (10 user tasks, no attack)",
+        "",
+        f"- Benign Utility: **{benign_utility:.1f}%** ({len(benign_cases)} tasks)",
+        "",
+        "## 2. Direct injection-goal achievability (14 injection tasks run directly)",
+        "",
+        f"- Achievable when asked directly: **{len(direct_achievable)}/{len(direct_goal_cases)}**: "
+        + ", ".join(f"`{t}`" for t in direct_achievable),
+        "- Остальные цели агент по прямой просьбе не выполняет (отказ или не по силам) —",
+        "  поэтому «атака не удалась» на них не доказывает работу защиты.",
+        "",
+        "## 3. Security under indirect prompt injection",
         "",
         "| Metric | Value |",
         "|--------|-------|",
+        f"| **Targeted ASR, direct-achievable subset (primary)** | **{asr_subset:.1f}%** ({len(subset_cases)} cases) |",
+        f"| Targeted ASR, full set (secondary) | {asr:.1f}% ({len(security_cases)} cases) |",
+        f"| Security rate, subset | {security_rate_subset:.1f}% |",
+        f"| Security rate, full | {security_rate:.1f}% |",
+        f"| Utility Under Attack (full) | {utility_under_attack:.1f}% |",
     ]
-    if benign_utility is not None:
-        md_lines.append(f"| Benign Utility | {benign_utility:.1f}% ({len(benign_cases)} tasks) |")
-    else:
-        md_lines.append("| Benign Utility | n/a |")
-    if utility_under_attack is not None:
-        md_lines.append(
-            f"| Utility Under Attack | {utility_under_attack:.1f}% ({len(security_cases)} cases) |"
-        )
-    else:
-        md_lines.append("| Utility Under Attack | n/a |")
-    if security_rate is not None:
-        md_lines.append(f"| Security rate | {security_rate:.1f}% |")
-    else:
-        md_lines.append("| Security rate | n/a |")
-    if asr is not None:
-        md_lines.append(f"| Targeted ASR | {asr:.1f}% |")
-    else:
-        md_lines.append("| Targeted ASR | n/a |")
 
     md_lines.extend(["", "## Benign cases", ""])
     for c in benign_cases:
         status = "PASS" if c["utility"] else "FAIL"
         md_lines.append(f"- `{c['user_task_id']}`: utility={status}, duration={c.get('duration', '?')}s")
+
+    md_lines.extend(["", "## Direct injection-goal runs", ""])
+    for c in direct_goal_cases:
+        status = "ACHIEVABLE" if c["utility"] else "NOT ACHIEVED"
+        md_lines.append(f"- `{c['user_task_id']}`: {status}")
 
     md_lines.extend(["", "## Security cases", ""])
     attack_success = [c for c in security_cases if c["security"] is False]
@@ -216,7 +266,7 @@ def main() -> int:
     traces_dir = RESULTS / "traces"
     traces_dir.mkdir(exist_ok=True)
 
-    for c in benign_cases:
+    for c in no_attack_cases:
         out = traces_dir / f"benign_{c['user_task_id']}.md"
         out.write_text(
             f"# Benign trace: {c['user_task_id']}\n\n"
@@ -238,7 +288,11 @@ def main() -> int:
     full_out = RESULTS / "T0_full_traces.json"
     with full_out.open("w", encoding="utf-8") as f:
         json.dump(
-            {"benign": benign_cases, "security": security_cases},
+            {
+                "benign": benign_cases,
+                "direct_goal": direct_goal_cases,
+                "security": security_cases,
+            },
             f,
             indent=2,
             ensure_ascii=False,
