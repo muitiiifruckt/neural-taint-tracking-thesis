@@ -29,6 +29,19 @@
 
 html, body { background: var(--page); }
 
+/*
+  Widen the column. jekyll-theme-slate caps `.inner` at 640px, leaving huge
+  empty margins. Use width:92% + a generous max-width so the content is wide
+  on desktop but still fluid (never overflows) on small screens, regardless
+  of the theme's own small-screen media queries.
+*/
+.inner {
+  max-width: 1120px;
+  width: 92%;
+  padding-left: 0;
+  padding-right: 0;
+}
+
 body {
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   color: var(--ink-secondary);
