@@ -2,7 +2,7 @@
 title: Архитектура
 ---
 
-[Главная](./) · [Архитектура](architecture) · [Результаты](results) · [Как запустить](reproduce) · [GitHub-репозиторий](https://github.com/muitiiifruckt/neural-taint-tracking-thesis)
+[Главная](./) · [Архитектура](architecture) · [Результаты](results) · [Как запустить](reproduce) · [Подробный разбор](PROJECT_EXPLAINED) · [T1](T1_SPEC) · [T2](T2_SPEC) · [T3](T3_SPEC) · [GitHub-репозиторий](https://github.com/muitiiifruckt/neural-taint-tracking-thesis)
 
 # Архитектура
 
@@ -139,7 +139,4 @@ flowchart TD
 встречи) — нормальное поведение при выполнении легитимной задачи, и блокировка именно этого —
 источник ложных срабатываний строгой политики.
 
-Полные технические спецификации каждого этапа — в репозитории:
-[T1](https://github.com/muitiiifruckt/neural-taint-tracking-thesis/blob/master/docs/T1_SPEC.md) ·
-[T2](https://github.com/muitiiifruckt/neural-taint-tracking-thesis/blob/master/docs/T2_SPEC.md) ·
-[T3](https://github.com/muitiiifruckt/neural-taint-tracking-thesis/blob/master/docs/T3_SPEC.md).
+Полные технические спецификации каждого этапа: [T1](T1_SPEC) · [T2](T2_SPEC) · [T3](T3_SPEC).

@@ -2,7 +2,7 @@
 title: Provenance-Gated Defense against Indirect Prompt Injection
 ---
 
-[Главная](./) · [Архитектура](architecture) · [Результаты](results) · [Как запустить](reproduce) · [GitHub-репозиторий](https://github.com/muitiiifruckt/neural-taint-tracking-thesis)
+[Главная](./) · [Архитектура](architecture) · [Результаты](results) · [Как запустить](reproduce) · [Подробный разбор](PROJECT_EXPLAINED) · [T1](T1_SPEC) · [T2](T2_SPEC) · [T3](T3_SPEC) · [GitHub-репозиторий](https://github.com/muitiiifruckt/neural-taint-tracking-thesis)
 
 # Symbolic Provenance-Gated Defense against Indirect Prompt Injection
 

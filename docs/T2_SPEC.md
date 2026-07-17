@@ -1,3 +1,9 @@
+---
+title: T2 — спецификация
+---
+
+[Главная](./) · [Архитектура](architecture) · [Результаты](results) · [Как запустить](reproduce) · [Подробный разбор](PROJECT_EXPLAINED) · [T1](T1_SPEC) · [T2](T2_SPEC) · [T3](T3_SPEC) · [GitHub-репозиторий](https://github.com/muitiiifruckt/neural-taint-tracking-thesis)
+
 # Спецификация T2: strict gate
 
 ## Цель
