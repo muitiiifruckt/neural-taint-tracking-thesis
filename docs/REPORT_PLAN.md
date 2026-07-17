@@ -40,26 +40,34 @@ T1 core реализован (~60–70%), интеграция T1 в live AgentD
       20.0% — идентичны T0 (критерий приёмки T1 выполнен). Таблица — `results/T1_summary.md`.
 - [x] **Taint leakage rate.** Готово: 202/549 (36.8%) вызовов privileged tools содержат
       `untrusted`/`derived_untrusted` аргумент.
-- [ ] **Спроектировать T2.** Список privileged tools для workspace suite (черновой список уже есть в
-      `scripts/run_t1_eval.py::PRIVILEGED_TOOLS`), strict gate (block, если хоть один аргумент
-      untrusted/derived_untrusted), запись `blocked=true/false` + причина в trace.
-- [x] **Обновить документацию.** `docs/ROADMAP.md`: статус T1 → done. Таблица T0 vs T1 и leakage rate —
-      `results/T1_summary.md`. Осталось: завести T2-спеку по аналогии с `docs/T1_SPEC.md`, обновить
-      `report/current_progress_update.tex` числами T1.
+- [x] **Спроектировать и реализовать T2 (и заодно T3).** Готово (2026-07-17):
+      `src/taint/policy.py` (`PRIVILEGED_TOOLS` + `SENSITIVE_FIELDS`), `GatingToolsExecutor`
+      (strict/field), тесты, спеки `docs/T2_SPEC.md`/`docs/T3_SPEC.md`, раннер
+      `scripts/run_eval.py --stage t2|t3`. Полный eval заблокирован: API снова 403 (2026-07-17).
+- [x] **Обновить документацию.** Готово: `docs/ROADMAP.md` (T1 done, T2/T3 implemented),
+      T2/T3-спеки, README переписан (рефрейминг + воспроизводимость), отчёт
+      `report/progress_update_2026-07-17.md` обновлён под фидбек рецензента.
 
-**Критерий готовности отчёта:** таблица T0 vs T1 (utility не изменилась) + leakage rate — **выполнено**,
-см. `results/T1_summary.md`. Осталось для полноты недели: T2-спека и, если успеет, первые числа T2.
+**Дополнение по фидбеку рецензента (получен 2026-07-17):** проект переименован в «symbolic
+provenance-gated defense», фокус T1–T3, основная метрика — targeted ASR на direct-achievable
+subset (7 задач), добавлен overblock rate; T0-репортинг разделён на 3 оценки (10 benign user
+tasks / 14 direct-goal runs / 140 security cases); главная причина недозачёта прошлой сдачи —
+незапушенный код — устранена (всё в origin/master).
+
+**Критерий готовности отчёта:** таблица T0 vs T1 + leakage rate — **выполнено**. Для сильного
+результата осталось: прогнать T2/T3 eval (нужен рабочий API-ключ) и собрать таблицу T0–T3.
 
 ## Финальный отчёт (ориентир: до конца июля / не позднее начала августа 2026)
 
 T4 в `docs/ROADMAP.md` помечен как *optional* — ядро финального отчёта это T0→T3.
 
-- [ ] **T2 доведён до конца.** Полный eval strict gate на всём наборе задач, сравнение T2 vs T0/T1 по
-      Targeted ASR, Security rate, Benign Utility, Utility Under Attack. Собрать список false positives
-      (заблокированные безобидные действия) как вход для T3.
-- [ ] **T3 реализован (field-level gate).** Sensitive fields для privileged tools (recipient, file path,
-      amount и т.п.), gate на уровне `(tool, field)` вместо целого tool call. Unit-тесты: allow для
-      tainted non-sensitive полей, block для tainted sensitive полей. Eval T3 vs T2.
+- [ ] **T2 доведён до конца.** Код+тесты готовы; остался полный eval strict gate
+      (`scripts/run_eval.py --stage t2`), сравнение T2 vs T0/T1 по direct-achievable ASR, full ASR,
+      Benign Utility, Utility Under Attack, overblock rate. Собрать список false positives
+      (заблокированные безобидные действия) как вход для анализа T3.
+- [ ] **T3 доведён до конца.** Код+тесты+таблица sensitive fields готовы (`docs/T3_SPEC.md`);
+      остался полный eval (`scripts/run_eval.py --stage t3`) и сравнение T3 vs T2 (ответ на
+      research question).
 - [ ] **(Опционально, если останется время) T4 — rule-based sanitizer** поверх block-only policy.
 - [ ] **Итоговое сравнение T0–T3(–T4).** Одна таблица/график по всем метрикам, на одинаковой модели и
       наборе cases. Обсудить trade-off Benign Utility vs Targeted ASR по этапам. Основная интерпретация

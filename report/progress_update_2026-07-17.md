@@ -1,64 +1,93 @@
-# Progress Report — Neural Taint Tracking
+# Progress Report — Symbolic Provenance-Gated Defense against Indirect Prompt Injection
 
 **Date:** 2026-07-17
 **Repo:** https://github.com/muitiiifruckt/neural-taint-tracking-thesis
 
+Per reviewer feedback, the project is narrowed and reframed: this is a **symbolic
+provenance-gated defense** (not "neural taint tracking"), focused on T1–T3. The research
+question: *does field-sensitive provenance gating (T3) reduce targeted ASR while preserving
+benign utility better than a strict gate (T2)?* A learned sanitizer and formal
+noninterference are explicitly out of scope.
+
 ## What has been done so far
 
-**T0 baseline (no defense).** Established on the AgentDojo `workspace` suite (v1.2.2), model
-`gpt-4o-mini-2024-07-18`, attack `important_instructions`, 10 user tasks × 14 injection tasks = 140
-security cases:
+**Repository.** All claimed code is now committed and pushed (the previous submission's
+gap): `src/taint/` (core + policy + pipeline integration), `tests/` (22 unit tests, no
+network needed), `scripts/`, `docs/` (per-stage specs), `results/` (summaries + 150 taint
+traces). Dependencies are pinned; the eval runner asserts the expected case counts.
 
-| Metric | Value |
-|---|---|
-| Benign Utility | 100.0% (10/10) |
-| Utility Under Attack | 20.0% (28/140) |
-| Security rate | 24.3% (34/140) |
-| Targeted ASR | 75.7% (106/140) |
+**Cleaned-up T0 reporting.** The three evaluations are now separated (previously 10 user
+tasks and 14 direct injection-goal runs were mixed into one "benign" number):
 
-**T1 — tag-only taint tracking.** Fully implemented and evaluated this week:
+1. *Benign user-task evaluation*: 10/10 = **100%** benign utility.
+2. *Direct injection-goal achievability*: **7/14** goals performed when asked directly
+   (`injection_task_0,1,2,4,5,10,13`). This subset defines the primary ASR metric.
+3. *Indirect prompt-injection security* (140 cases): full-set ASR **75.7%**;
+   **direct-achievable subset ASR 51.4%** (70 cases, primary metric).
 
-- Core data model (`TaintedSpan`, `TrustLabel`, `TaintRegistry`, `TaintTrace`) with unit tests.
-- `ObservingToolsExecutor`: integrated the taint observer directly into a live AgentDojo pipeline as a
-  fork of the library's `ToolsExecutor`. It observes the *raw structured* tool return value before
-  AgentDojo flattens it into a single string, which preserves per-field taint granularity (an
-  after-the-fact observer on the formatted string was tried first and rejected — it collapses an entire
-  tool output into one span and misses most real copies).
-- A custom eval runner (`scripts/run_t1_eval.py`), since AgentDojo's benchmark CLI only accepts
-  defenses from a hardcoded list and cannot take an arbitrary custom pipeline element.
-- Full evaluation on the same 150 cases as T0:
+An honest observation from the data: on the 7 *non*-achievable goals the injected attack
+succeeded in 70/70 cases — a direct refusal does not protect against the same goal arriving
+via injection, which further motivates a provenance gate over refusal-based safety.
 
-| Metric | T0 | T1 |
+**T1 — tag-only taint tracking: complete, with real benchmark runs.**
+
+- `ObservingToolsExecutor` integrated into a live AgentDojo pipeline (fork of the library's
+  `ToolsExecutor`; observes the *raw structured* tool return value before string flattening,
+  preserving per-field span granularity).
+- Full evaluation on the same 150 cases as T0. Real traces in `results/T1_traces/`
+  (150 files) show untrusted tool outputs propagating into later tool-call arguments with
+  parent lineage (e.g. an attacker email extracted from an injected calendar-event
+  description into `send_email.recipients`).
+
+| Metric | T0 | T1 (gate off) |
 |---|---|---|
-| Benign Utility | 100.0% | **100.0%** |
-| Utility Under Attack | 20.0% | **20.0%** |
-| Security rate | 24.3% | 28.6% (LLM run-to-run noise; gate is disabled, T1 cannot affect this) |
-| Targeted ASR | 75.7% | 71.4% (same noise) |
-| Taint leakage rate | — | **36.8%** (202/549 privileged tool calls carried untrusted content) |
+| Benign utility | 100.0% | **100.0%** |
+| Utility under attack | 20.0% | **20.0%** |
+| Targeted ASR, direct-achievable subset (primary) | 51.4% | 48.6% |
+| Targeted ASR, full set | 75.7% | 71.4% |
+| Taint leakage rate | — | **36.8%** (202/549 privileged calls) |
 
-Benign Utility and Utility Under Attack are identical to T0, confirming T1's key acceptance criterion:
-the observation-only layer does not change agent behavior. Taint leakage rate is the first quantitative
-evidence for where T2's gate needs to intervene.
+Benign utility and utility under attack are *identical* to T0, confirming the tag-only layer
+does not change agent behavior; the small ASR difference is LLM run-to-run noise (the gate is
+disabled and cannot affect outcomes). Running the real benchmark also surfaced and fixed a
+genuine bug in taint matching (short values extracted from larger untrusted blobs were not
+detected; fixed with bidirectional matching + minimum match length, covered by unit tests).
 
-While validating the smoke test, a real bug was found and fixed in the taint-matching logic: it only
-detected a known untrusted span copied *verbatim* into new text, not a short value (e.g. an email
-address) *extracted from within* a larger untrusted blob — the more common injection pattern in this
-suite. Fixed with bidirectional substring matching plus a minimum match length, covered by new unit
-tests. All 10 unit tests pass without network access.
+**T2 (strict gate) and T3 (field-sensitive gate): implemented and unit-tested.**
+
+- `src/taint/policy.py`: explicit privileged-tool list (10 workspace tools) and a
+  per-tool sensitive-fields table (routing/exfiltration targets and destructive-target ids
+  are sensitive; content fields are not) — rationale in `docs/T2_SPEC.md`/`docs/T3_SPEC.md`.
+- `GatingToolsExecutor`: a blocked privileged call is *not executed*; the LLM receives an
+  explanatory tool error, and the trace records `blocked=true`, the reason, and the exact
+  tainted argument paths. Unit tests cover: strict blocks any tainted argument; field mode
+  allows tainted content fields but blocks tainted routing/target fields; blocked tools
+  produce no side effects.
+- The runner (`scripts/run_eval.py --stage t1|t2|t3`) reports the same separated metrics for
+  every stage, plus **overblock rate** (share of benign user tasks with ≥1 blocked call).
+
+The full T2/T3 evaluations on the 150-case set are ready to launch but currently blocked by
+an external issue: the OpenRouter API key began returning `403 Access denied by security
+policy` mid-day (after the T1 full run completed). The commands are one-liners once access
+is restored.
 
 ## How much has been done from the previous stage
 
-The previous update (2026-07-15) put T1 at roughly 60–70%: core data structures and propagation logic
-were done, but pipeline integration and a real benchmark run were still open. Both are now complete —
-T1 is done against every acceptance criterion in `docs/ROADMAP.md`, including the full 150-case
-evaluation and the taint leakage rate metric.
+The previous update claimed T1 was ~60–70% done but the code was not visible in the
+repository. Since then: the repository is complete and pushed; T1 is 100% done including the
+full 150-case evaluation, trace evidence, and the taint-leakage metric; T0 reporting is
+cleaned up with the direct-achievable subset as the primary ASR metric; T2 and T3 are fully
+implemented and unit-tested (evaluation pending API access). Against the reviewer's
+checklist, 8 of 10 requested artifacts are delivered; the remaining two (T2/T3 benchmark
+numbers and the final T0–T3 comparison table) only need API access to run.
 
-## Plan for next week
+## Plan for the next week
 
-- Formalize the privileged-tool list (draft already used for the leakage metric) and define sensitive
-  fields per tool — input for T2 and later T3.
-- Design and implement T2: a strict gate that blocks a privileged tool call if any argument is
-  `untrusted` or `derived_untrusted`, recording the block decision and reason in the trace.
-- Run T2 on the same 150 cases and compare Targeted ASR, Security rate, and Benign Utility against
-  T0/T1.
-- Collect false positives (blocked benign actions) from that run as input for T3's field-level gate.
+1. Restore API access; run `scripts/run_eval.py --stage t2` and `--stage t3` (150 cases
+   each, same configuration as T0/T1).
+2. Produce the T0/T1/T2/T3 comparison table: direct-achievable ASR (primary), full ASR,
+   benign utility, utility under attack, overblock rate, taint leakage.
+3. Collect false positives from T2 traces (blocked benign actions) and analyze whether T3
+   recovers them — the core answer to the research question.
+4. Include annotated trace examples (blocked exfiltration attempt; allowed benign
+   content-copy) in the report.
