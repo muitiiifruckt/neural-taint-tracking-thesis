@@ -69,7 +69,7 @@ flowchart LR
 <div class="stat-label">Benign Utility без защиты</div>
 <div class="stat-value">100%</div>
 </div>
-<div class="stat-tile warning">
+<div class="stat-tile">
 <div class="stat-label">Benign Utility c gate (T2/T3)</div>
 <div class="stat-value">80%</div>
 </div>
