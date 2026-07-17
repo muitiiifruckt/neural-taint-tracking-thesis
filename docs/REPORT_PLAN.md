@@ -57,27 +57,33 @@ tasks / 14 direct-goal runs / 140 security cases); главная причина
 **Критерий готовности отчёта:** таблица T0 vs T1 + leakage rate — **выполнено**. Для сильного
 результата осталось: прогнать T2/T3 eval (нужен рабочий API-ключ) и собрать таблицу T0–T3.
 
+## Пре-финальный отчёт (написан 2026-07-17)
+
+`report/prefinal_report.tex` → `prefinal_report.pdf` (4 стр., LaTeX). Содержит полное сравнение
+T0–T3, ответ на research question, разбор false positives и остаточных атак, статус по плану и
+план на финальный отчёт. Собирается `pdflatex prefinal_report.tex` (TinyTeX).
+
 ## Финальный отчёт (ориентир: до конца июля / не позднее начала августа 2026)
 
 T4 в `docs/ROADMAP.md` помечен как *optional* — ядро финального отчёта это T0→T3.
+**Вся техническая работа T0–T3 закрыта** (см. ниже); осталась только письменная часть и,
+опционально, T4.
 
-- [ ] **T2 доведён до конца.** Код+тесты готовы; остался полный eval strict gate
-      (`scripts/run_eval.py --stage t2`), сравнение T2 vs T0/T1 по direct-achievable ASR, full ASR,
-      Benign Utility, Utility Under Attack, overblock rate. Собрать список false positives
-      (заблокированные безобидные действия) как вход для анализа T3.
-- [ ] **T3 доведён до конца.** Код+тесты+таблица sensitive fields готовы (`docs/T3_SPEC.md`);
-      остался полный eval (`scripts/run_eval.py --stage t3`) и сравнение T3 vs T2 (ответ на
-      research question).
+- [x] **T2 доведён до конца.** Полный eval strict gate выполнен: subset ASR 11.4% (T0: 48.6%),
+      full 5.7%, Benign Utility 80% (overblock 20%, 2 кейса), UUA 34.3%, 579 blocked calls.
+      False positives собраны (оба — поле `participants`). `results/T2_summary.md`.
+- [x] **T3 доведён до конца.** Полный eval field-gate выполнен: subset ASR 8.6%, full 4.3%,
+      Benign Utility 80% (те же 2 false positive). Ответ на research question: field-gate НЕ
+      восстанавливает utility относительно strict. `results/T3_summary.md`.
 - [ ] **(Опционально, если останется время) T4 — rule-based sanitizer** поверх block-only policy.
-- [ ] **Итоговое сравнение T0–T3(–T4).** Одна таблица/график по всем метрикам, на одинаковой модели и
-      наборе cases. Обсудить trade-off Benign Utility vs Targeted ASR по этапам. Основная интерпретация
-      ASR — subset «7 из 14 injection tasks, достижимых напрямую» (полные 140 cases как дополнение).
+- [x] **Итоговое сравнение T0–T3.** Таблица собрана в `report/prefinal_report.tex`, README,
+      `report/progress_update_2026-07-17.md` и на сайте (`docs/results.md`). Основная метрика —
+      subset ASR (7 из 14 задач), full ASR как вторичная.
 - [ ] **Финальный текст отчёта.** Idea → threat model → результаты по всем этапам → выводы →
-      ограничения (символический taint, а не formal noninterference) → что остаётся на возможную
-      магистерскую (learned sanitizer, полноценная noninterference-оценка). Обновить README, если
-      появятся `src/agent/`, `eval/` из изначального плана кода (см. `report/progress_report.tex`,
-      «Planned Code Structure»).
+      ограничения (символический taint, а не formal noninterference; порог MIN_MATCH_LENGTH;
+      false positives на routing-полях) → future work. Каркас и всё содержание уже есть в
+      пре-финальном отчёте и на сайте — осталась консолидация в финальный документ.
 
 **Критерий готовности:** воспроизводимый прогон T0–T3 на одной модели, таблица сравнения метрик,
 зафиксированные false positives/negatives, текст, честно объясняющий выполненное и оставшееся на
-будущее.
+будущее — **всё, кроме финального сводного текста, готово**.
