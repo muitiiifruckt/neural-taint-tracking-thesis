@@ -1,5 +1,15 @@
 # Symbolic Provenance-Gated Defense against Indirect Prompt Injection
 
+<div align="center">
+
+## [🌐](https://muitiiifruckt.github.io/neural-taint-tracking-thesis/)
+
+[![Open live site](https://img.shields.io/badge/GitHub%20Pages-Open%20live%20site%20%E2%86%92-5b9ded?style=for-the-badge&logo=githubpages&logoColor=white)](https://muitiiifruckt.github.io/neural-taint-tracking-thesis/)
+
+**Диаграммы, сравнение T0–T3 и разбор результатов — на сайте проекта**
+
+</div>
+
 Поэтапная (T0–T3) защита tool-using LLM-агента от indirect prompt injection на бенчмарке
 **AgentDojo** (`workspace` suite). Защита строится на
 символьном (substring-based) отслеживании происхождения данных (taint/provenance tracking) и
