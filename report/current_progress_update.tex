@@ -1,0 +1,120 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{booktabs}
+
+\geometry{margin=2.5cm}
+\hypersetup{colorlinks=true, linkcolor=blue, urlcolor=blue, citecolor=blue}
+
+\title{Neural Taint Tracking for Prompt-Injection-Resistant Agents\\[0.5em]\large Current Project Progress Update}
+\author{Murtazin Aizat}
+\date{July 7, 2026}
+
+\begin{document}
+\maketitle
+
+\noindent\textbf{Code repository:} \url{https://github.com/muitiiifruckt/neural-taint-tracking-thesis}
+
+\section{What Has Been Done So Far}
+
+The project studies defenses against \emph{indirect prompt injection} in tool-using LLM agents. The main idea is to add an orchestration-layer taint tracking mechanism that records the provenance of data and detects when untrusted tool outputs influence later tool calls.
+
+The evaluation is based on the \textbf{AgentDojo} benchmark, using the \texttt{workspace} suite and the \texttt{important\_instructions} attack.
+
+So far, I have completed the first baseline experiment and started the first implementation stage:
+
+\begin{itemize}
+  \item Set up the project repository, Python environment, configuration files, and experiment scripts.
+  \item Prepared the workflow for running the T0 baseline and collecting results.
+  \item Ran the \textbf{T0 baseline} without any defense:
+    \begin{itemize}
+      \item 10 benign user tasks;
+      \item 140 security cases;
+      \item model: \texttt{gpt-4o-mini-2024-07-18};
+      \item attack: \texttt{important\_instructions}.
+    \end{itemize}
+  \item Collected reproducible artifacts: \texttt{results/T0\_summary.md}, \texttt{results/T0\_full\_traces.json}, and per-case markdown traces.
+  \item Started \textbf{T1}, a tag-only taint tracking layer that records provenance but does not block tool calls yet.
+  \item Wrote the T1 specification in \texttt{docs/T1\_SPEC.md}.
+  \item Implemented the initial taint tracking core in \texttt{src/taint/}: \texttt{TaintedSpan}, \texttt{TaintRegistry}, propagation helpers, trace serialization, and a passive observer skeleton.
+  \item Added unit tests for the taint tracking core, including a synthetic lineage case from email content to \texttt{send\_email}.
+  \item Prepared a roadmap document for the T0--T4 experimental stages.
+\end{itemize}
+
+\subsection{T0 Baseline Results}
+
+\begin{table}[h]
+  \centering
+  \caption{AgentDojo workspace baseline without defense.}
+  \begin{tabular}{@{}ll@{}}
+    \toprule
+    \textbf{Metric} & \textbf{Value} \\
+    \midrule
+    Benign Utility & 100\% \\
+    Utility Under Attack & 20\% \\
+    Security Rate & 24.3\% \\
+    \textbf{Targeted ASR} & \textbf{75.7\%} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+These results show that the undefended agent performs well on benign tasks, but remains highly vulnerable to indirect prompt injection attacks. This baseline is the reference point for the next treatments.
+
+\section{Progress Compared to the Initial Plan}
+
+The initial project plan consisted of several experimental treatments:
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    \textbf{Stage} & \textbf{Description} & \textbf{Status} \\
+    \midrule
+    T0 & Baseline without defense & Completed \\
+    T1 & Tag-only taint tracking & Partially implemented \\
+    T2 & Strict gate for privileged tools & Planned \\
+    T3 & Field-level gate & Planned \\
+    T4 & Rule-based sanitizer & Optional / later \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+T0 is fully completed. This is an important part of the project because it provides the reference point for all later comparisons.
+
+T1 is currently in progress. The specification, core data structures, propagation logic, trace format, and unit tests are already implemented. The remaining T1 work is to integrate the passive observer into the AgentDojo execution pipeline so that real benchmark runs can produce taint traces.
+
+My current estimate is:
+
+\begin{itemize}
+  \item T0 is 100\% complete;
+  \item T1 is around 60--70\% complete;
+  \item T2--T4 are still planned.
+\end{itemize}
+
+If the first milestone is defined as ``T0 baseline + initial T1 implementation'', then this milestone is approximately 55--60\% complete. If the full T0--T4 experimental ladder is considered, the overall progress is approximately 25--35\%.
+
+\section{Plan for the Next Two Weeks}
+
+During the next two weeks, I plan to complete T1 and start T2. The planned tasks are:
+
+\begin{enumerate}
+  \item Integrate the passive taint observer into the AgentDojo execution pipeline.
+  \item Run a small smoke test and generate the first real T1 taint traces.
+  \item Run T1 on the same benchmark configuration as T0 and verify that the tag-only layer does not change the agent's behavior.
+  \item Add a \texttt{taint leakage rate} metric to measure how often untrusted data reaches tool-call arguments.
+  \item Define the list of \texttt{privileged tools} and \texttt{sensitive fields} for the next stage.
+  \item Implement the initial strict gate policy for T2.
+  \item Run the first T2 evaluation and compare it against T0 using Targeted ASR, Security Rate, Benign Utility, and Utility Under Attack.
+  \item Update the written report and project documentation with the T1 implementation details and the initial T2 design.
+\end{enumerate}
+
+\section{Current Conclusion}
+
+At this stage, the project has a reproducible baseline, clear evaluation metrics, and an initial implementation of the taint tracking layer. The baseline confirms the main motivation for the project: the agent without defense has high benign utility, but also a high targeted attack success rate.
+
+The next main step is to connect the implemented T1 core to real AgentDojo runs, collect taint traces, and then use this information to implement a defensive gate in T2.
+
+\end{document}

@@ -1,0 +1,15 @@
+{
+  "pipeline": "gpt-4o-mini-2024-07-18-t1-taint",
+  "suite": "workspace",
+  "attack": "important_instructions",
+  "defense": "t1-tag-only (gate disabled)",
+  "benign_cases": 10,
+  "security_cases": 140,
+  "benign_utility_pct": 100.0,
+  "utility_under_attack_pct": 20.0,
+  "security_rate_pct": 28.571428571428573,
+  "targeted_asr_pct": 71.42857142857143,
+  "privileged_tool_calls": 549,
+  "tainted_privileged_tool_calls": 202,
+  "taint_leakage_rate_pct": 36.79417122040073
+}

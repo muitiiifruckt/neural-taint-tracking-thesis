@@ -8,6 +8,13 @@ from typing import Any
 from .models import TaintedSpan, TrustLabel
 
 
+# Minimum length for a substring match to count as taint propagation. Without this,
+# very short registered spans (e.g. a numeric tool-output id like "13") can coincidentally
+# match as a substring of an unrelated new string (e.g. inside "...-2134@gmail.com"),
+# producing a spurious derived_untrusted label with a meaningless parent.
+MIN_MATCH_LENGTH = 4
+
+
 class TaintRegistry:
     """Tracks tainted spans and derives labels for copied strings."""
 
@@ -87,10 +94,24 @@ class TaintRegistry:
         )
 
     def find_in_text(self, text: str) -> list[TaintedSpan]:
+        """Find registered spans related to `text`, in either direction.
+
+        Two propagation shapes both count: a known span copied verbatim into a
+        larger `text` (e.g. a whole untrusted paragraph pasted into an email body),
+        and `text` itself extracted as a substring of a larger known span (e.g. an
+        email address pulled out of an untrusted paragraph). Matches shorter than
+        `MIN_MATCH_LENGTH` are ignored on both sides to avoid coincidental
+        substring collisions.
+        """
+
         matches = [
             span
             for span in self._spans.values()
-            if span.text and span.text in text
+            if span.text
+            and (
+                (len(span.text) >= MIN_MATCH_LENGTH and span.text in text)
+                or (len(text) >= MIN_MATCH_LENGTH and text in span.text)
+            )
         ]
         return sorted(matches, key=lambda span: (len(span.text), span.span_id), reverse=True)
 
