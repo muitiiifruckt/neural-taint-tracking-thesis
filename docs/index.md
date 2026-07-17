@@ -2,7 +2,17 @@
 title: Provenance-Gated Defense against Indirect Prompt Injection
 ---
 
-[Главная](./) · [Архитектура](architecture) · [Результаты](results) · [Как запустить](reproduce) · [Подробный разбор](PROJECT_EXPLAINED) · [T1](T1_SPEC) · [T2](T2_SPEC) · [T3](T3_SPEC) · [GitHub-репозиторий](https://github.com/muitiiifruckt/neural-taint-tracking-thesis)
+<nav class="site-nav">
+<a href="./" class="active">Главная</a>
+<a href="architecture">Архитектура</a>
+<a href="results">Результаты</a>
+<a href="reproduce">Как запустить</a>
+<a href="PROJECT_EXPLAINED">Подробный разбор</a>
+<a href="T1_SPEC">T1</a>
+<a href="T2_SPEC">T2</a>
+<a href="T3_SPEC">T3</a>
+<a href="https://github.com/muitiiifruckt/neural-taint-tracking-thesis">GitHub</a>
+</nav>
 
 # Symbolic Provenance-Gated Defense against Indirect Prompt Injection
 
@@ -45,6 +55,25 @@ flowchart LR
 
 Оценка на **AgentDojo** (suite `workspace`, `gpt-4o-mini`), 150 сценариев на каждом этапе: 10
 легитимных задач + 140 сценариев с внедрённой атакой (10 задач × 14 целей атакующего).
+
+<div class="stat-grid">
+<div class="stat-tile critical">
+<div class="stat-label">ASR без защиты (T0)</div>
+<div class="stat-value">48.6%</div>
+</div>
+<div class="stat-tile good">
+<div class="stat-label">ASR с лучшей защитой (T3)</div>
+<div class="stat-value">8.6%</div>
+</div>
+<div class="stat-tile">
+<div class="stat-label">Benign Utility без защиты</div>
+<div class="stat-value">100%</div>
+</div>
+<div class="stat-tile warning">
+<div class="stat-label">Benign Utility c gate (T2/T3)</div>
+<div class="stat-value">80%</div>
+</div>
+</div>
 
 | Metric | T0 | T1 | T2 (strict) | T3 (field) |
 |---|---|---|---|---|

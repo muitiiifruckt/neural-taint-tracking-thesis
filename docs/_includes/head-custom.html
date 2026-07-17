@@ -1,4 +1,38 @@
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%230d0d0d'/%3E%3Cpath d='M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6l7-3z' fill='none' stroke='%233987e5' stroke-width='1.6'/%3E%3Cpath d='M9 12l2 2 4-4' fill='none' stroke='%233987e5' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+
 <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.0/dist/mermaid.min.js"></script>
 <script>
-  mermaid.initialize({ startOnLoad: true, theme: "dark" });
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: "base",
+    themeVariables: {
+      background: "#141413",
+      primaryColor: "#1c2b42",
+      primaryTextColor: "#ffffff",
+      primaryBorderColor: "#3987e5",
+      lineColor: "#3987e5",
+      secondaryColor: "#2c2c2a",
+      tertiaryColor: "#1a1a19",
+      textColor: "#c3c2b7",
+      mainBkg: "#1c2b42",
+      nodeBorder: "#3987e5",
+      clusterBkg: "#1a1a19",
+      clusterBorder: "#2c2c2a",
+      edgeLabelBackground: "#141413",
+      fontFamily: "system-ui, -apple-system, Segoe UI, sans-serif",
+      xyChart: {
+        backgroundColor: "#141413",
+        titleColor: "#ffffff",
+        xAxisLabelColor: "#c3c2b7",
+        xAxisTitleColor: "#c3c2b7",
+        xAxisTickColor: "#898781",
+        xAxisLineColor: "#2c2c2a",
+        yAxisLabelColor: "#c3c2b7",
+        yAxisTitleColor: "#c3c2b7",
+        yAxisTickColor: "#898781",
+        yAxisLineColor: "#2c2c2a",
+        plotColorPalette: "#3987e5"
+      }
+    }
+  });
 </script>

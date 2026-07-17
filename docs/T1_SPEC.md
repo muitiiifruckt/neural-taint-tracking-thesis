@@ -2,7 +2,17 @@
 title: T1 — спецификация
 ---
 
-[Главная](./) · [Архитектура](architecture) · [Результаты](results) · [Как запустить](reproduce) · [Подробный разбор](PROJECT_EXPLAINED) · [T1](T1_SPEC) · [T2](T2_SPEC) · [T3](T3_SPEC) · [GitHub-репозиторий](https://github.com/muitiiifruckt/neural-taint-tracking-thesis)
+<nav class="site-nav">
+<a href="./">Главная</a>
+<a href="architecture">Архитектура</a>
+<a href="results">Результаты</a>
+<a href="reproduce">Как запустить</a>
+<a href="PROJECT_EXPLAINED">Подробный разбор</a>
+<a href="T1_SPEC" class="active">T1</a>
+<a href="T2_SPEC">T2</a>
+<a href="T3_SPEC">T3</a>
+<a href="https://github.com/muitiiifruckt/neural-taint-tracking-thesis">GitHub</a>
+</nav>
 
 # Спецификация T1: слой taint-tracking только с метками
 
